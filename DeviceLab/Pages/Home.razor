@@ -1,0 +1,752 @@
+@page "/"
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using DeviceLab.Scanner
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>DeviceLab · bancada do navegador</PageTitle>
+
+<div class="ambient ambient-one" aria-hidden="true"></div>
+<div class="ambient ambient-two" aria-hidden="true"></div>
+
+<main class="app-shell">
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="DeviceLab início">
+            <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span>device<span class="brand-accent">lab</span></span>
+        </a>
+        <div class="topbar-right">
+            <span class="connection-pill"><i class="status-dot @(IsOnline ? "online" : "offline")"></i>@(IsOnline ? "Conectado" : "Sem internet")</span>
+            <span class="privacy-pill"><span aria-hidden="true">◆</span> Dados no aparelho</span>
+        </div>
+    </header>
+
+    <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+            <p class="eyebrow"><span class="eyebrow-line"></span> LABORATÓRIO DE BOLSO · PWA</p>
+            <h1 id="hero-title">Conheça o que seu <span>device</span> consegue fazer.</h1>
+            <p class="hero-description">Uma bancada para experimentar recursos do navegador e do aparelho. Cada teste começa no seu clique; os dados ficam aqui.</p>
+            <div class="hero-actions">
+                <a class="button button-primary" href="#testes">Explorar testes <span aria-hidden="true">↓</span></a>
+                <button class="button button-secondary" @onclick='() => OpenTest("webgl")'><span class="play-icon" aria-hidden="true">▶</span> Abrir cena 3D</button>
+            </div>
+            <div class="hero-footnote"><span class="shield-icon" aria-hidden="true">◈</span> GPS, câmera e microfone não são acionados sem autorização sua.</div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+            <div class="orbital orbital-a"></div>
+            <div class="orbital orbital-b"></div>
+            <div class="orbital orbital-c"></div>
+            <div class="device-orb"><span class="device-orb-inner"></span><span class="device-orb-core"></span></div>
+            <div class="float-card float-card-top"><span class="float-icon teal">◎</span><span><b>WebGL</b><small>renderização ao vivo</small></span><i class="status-dot online"></i></div>
+            <div class="float-card float-card-bottom"><span class="float-icon violet">⌁</span><span><b>FPS</b><small>medição real</small></span><strong>60</strong></div>
+            <div class="art-caption">SENSORES · WEB APIs · PERFORMANCE</div>
+        </div>
+    </section>
+
+    <section class="quick-stats" aria-label="Resumo do laboratório">
+        <div><span class="stat-icon">▦</span><span><strong>15</strong><small>experimentos</small></span></div>
+        <div><span class="stat-icon teal">◈</span><span><strong>Local</strong><small>sem envio de dados</small></span></div>
+        <div><span class="stat-icon violet">◷</span><span><strong>Ao vivo</strong><small>suporte detectado agora</small></span></div>
+        <div class="quick-status"><span class="status-dot @(IsOnline ? "online" : "offline")"></span>@(IsOnline ? "Navegador conectado" : "Modo sem internet")</div>
+    </section>
+
+    <section id="testes" class="tests-section" aria-labelledby="tests-title">
+        <div class="section-heading">
+            <div><p class="eyebrow">ESCOLHA UMA BANCADA</p><h2 id="tests-title">O que vamos testar?</h2><p class="section-intro">Toque em um cartão para abrir os controles. Alguns recursos dependem do navegador, da permissão e de HTTPS.</p></div>
+            <button class="button button-stop" @onclick="StopAll" disabled="@(!AnyResourceActive)"><span aria-hidden="true">■</span> Parar testes</button>
+        </div>
+
+        <div class="feature-grid">
+            @foreach (var item in Tests)
+            {
+                <button class="feature-card @(SelectedTest == item.Id ? "selected" : "")" @onclick="() => OpenTest(item.Id)" aria-pressed="@(SelectedTest == item.Id)">
+                    <span class="feature-top"><span class="feature-icon @item.Tone">@item.Icon</span><span class="feature-tag">@item.Tag</span></span>
+                    <span class="feature-title">@item.Title</span>
+                    <span class="feature-copy">@item.Description</span>
+                    <span class="feature-link">Abrir teste <span aria-hidden="true">↗</span></span>
+                </button>
+            }
+        </div>
+    </section>
+
+    @if (SelectedTest is not null)
+    {
+        <section class="test-panel" aria-live="polite" aria-labelledby="panel-title">
+            <div class="panel-heading">
+                <div class="panel-title-wrap">
+                    <span class="feature-icon @Selected.Tone">@Selected.Icon</span>
+                    <div><p class="eyebrow">BANCADA ATIVA</p><h2 id="panel-title" tabindex="-1" @ref="_panelHeading">@Selected.Title</h2></div>
+                </div>
+                <button class="icon-button" title="Fechar teste" aria-label="Fechar teste" @onclick="CloseTest">×</button>
+            </div>
+
+            @if (SelectedTest == "storage")
+            {
+                <div class="panel-body two-columns">
+                    <div class="control-card">
+                        <h3>LocalStorage</h3>
+                        <p>Grave um texto de teste no armazenamento deste navegador e confira a leitura de volta.</p>
+                        <label class="field-label" for="local-value">Valor de teste</label>
+                        <input id="local-value" class="text-field" @bind="LocalValue" maxlength="240" autocomplete="off" />
+                        <div class="button-row"><button class="button button-primary" @onclick="SaveLocal">Gravar e ler</button><button class="button button-quiet" @onclick="ClearLocal">Apagar teste</button></div>
+                        <p class="result-line"><span class="status-dot @(LocalStatus.StartsWith("OK") ? "online" : "muted")"></span>@LocalStatus</p>
+                        @if (!string.IsNullOrEmpty(LocalReadback)) { <div class="result-box"><small>Leitura confirmada</small><strong>@LocalReadback</strong></div> }
+                    </div>
+                    <div class="info-card"><span class="info-kicker">SEM NUVEM</span><h3>O que fica salvo?</h3><p>Somente a chave <code>devicelab.demo</code> e o texto que você informar. O botão “Apagar teste” remove essa chave.</p><p class="muted-copy">Armazenamento persistente pode ser limpo nas configurações do navegador. Não use dados sensíveis neste teste.</p></div>
+                </div>
+            }
+            else if (SelectedTest == "gps")
+            {
+                <div class="panel-body two-columns">
+                    <div class="control-card">
+                        <h3>Posição do aparelho</h3><p>Uma leitura única da localização atual; nada é gravado ou enviado.</p>
+                        <button class="button button-primary" @onclick="ReadLocation" disabled="@GpsBusy">@(GpsBusy ? "Consultando…" : "Solicitar localização")</button>
+                        <p class="result-line"><span class="status-dot @(GpsStatus.StartsWith("Localização recebida") ? "online" : "muted")"></span>@GpsStatus</p>
+                        @if (GpsLatitude is not null)
+                        {
+                            <div class="metric-row"><div class="metric-tile"><small>Latitude</small><strong>@GpsLatitude.Value.ToString("F6")</strong></div><div class="metric-tile"><small>Longitude</small><strong>@GpsLongitude!.Value.ToString("F6")</strong></div><div class="metric-tile"><small>Precisão informada</small><strong>± @GpsAccuracy!.Value.ToString("F0") m</strong></div></div>
+                        }
+                    </div>
+                    <div class="info-card"><span class="info-kicker">CLIQUE DELIBERADO</span><h3>Permissão e precisão</h3><p>O navegador pergunta antes do primeiro acesso. O resultado pode vir de GPS, Wi‑Fi ou rede celular; a precisão varia.</p><p class="muted-copy">Se o teste for negado ou indisponível, confira a permissão deste site e os serviços de localização do aparelho. Use HTTPS fora de localhost.</p></div>
+                </div>
+            }
+            else if (SelectedTest == "camera")
+            {
+                <div class="panel-body two-columns camera-layout">
+                    <div class="camera-box"><video id="cameraView" playsinline autoplay muted aria-label="Prévia local da câmera"></video><div class="camera-placeholder"><span class="camera-placeholder-icon">▣</span><strong>Prévia da câmera</strong><small>A imagem permanece no aparelho e não é enviada.</small></div><div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><span></span></div></div>
+                    <div class="control-card">
+                        <h3>Câmera e leitor QR</h3><p>A câmera só abre depois deste clique. O leitor ZXing.Net roda localmente em WebAssembly, sem mandar a imagem para um servidor.</p>
+                        <div class="button-row"><button class="button button-primary" @onclick="StartCamera" disabled="@CameraActive">Abrir câmera</button><button class="button button-quiet" @onclick="StopCamera" disabled="@(!CameraActive)">Parar e liberar</button></div>
+                        <div class="button-row photo-capture-row"><button class="button button-secondary" @onclick="CapturePhoto" disabled="@(!CameraActive)">Capturar foto</button><span class="photo-status">@PhotoStatus</span></div>
+                        @if (!string.IsNullOrEmpty(CapturedPhotoDataUrl))
+                        {
+                            <div class="captured-photo-card">
+                                <img src="@CapturedPhotoDataUrl" alt="Foto capturada nesta bancada" />
+                                <div class="captured-photo-actions"><span>Foto temporária nesta sessão · somente neste aparelho</span><a class="button button-quiet" href="@CapturedPhotoDataUrl" download="devicelab-foto.jpg">Baixar foto</a><button class="button button-quiet" @onclick="ClearCapturedPhoto">Apagar foto</button></div>
+                            </div>
+                        }
+                        <p class="result-line"><span class="status-dot @(CameraActive ? "online" : "muted")"></span>@CameraStatus</p>
+                        @if (!string.IsNullOrEmpty(QrResult)) { <div class="result-box"><small>QR lido na sessão atual</small><strong class="break-word">@QrResult</strong></div> }
+                        <div class="qr-demo-card"><div class="qr-demo-image"><img id="demoQrImage" src="qr-demo.svg" alt="QR de amostra local com o texto DEVICE-LAB-LOCAL-DEMO" /></div><div class="qr-demo-copy"><span class="info-kicker">LEITURA DE AMOSTRA</span><strong>Teste sem abrir a câmera</strong><small>O mesmo decodificador local lê este QR de demonstração.</small><button class="button button-secondary" @onclick="ScanQrSample">Ler QR de amostra</button></div></div>
+                        <p class="privacy-note">QRs são exibidos como texto nesta página. Um código lido nunca abre um link automaticamente.</p>
+                    </div>
+                </div>
+            }
+            else if (SelectedTest == "notifications")
+            {
+                <div class="panel-body two-columns">
+                    <div class="control-card"><h3>Notificação local</h3><p>Solicite permissão e exiba uma notificação de teste a partir do service worker deste app.</p><button class="button button-primary" @onclick="SendLocalNotification">Permitir e mostrar notificação local</button><p class="result-line"><span class="status-dot @(NotificationStatus.StartsWith("Notificação exibida") ? "online" : "muted")"></span>@NotificationStatus</p><p class="muted-copy">Em dispositivos móveis, o navegador pode exigir PWA instalado e HTTPS. A escolha de permissão é controlada pelo sistema.</p></div>
+                    <div class="info-card push-card"><span class="info-kicker">OUTRO RECURSO</span><h3>Push remoto</h3><p>Push precisa de um serviço de envio, inscrição do dispositivo e chaves de aplicação. Este projeto não tem servidor, credenciais nem envio configurado.</p><div class="push-state"><span class="status-dot muted"></span><span><b>Não configurado</b><small>Nenhuma conexão de push será criada.</small></span></div></div>
+                </div>
+            }
+            else if (SelectedTest == "webgl")
+            {
+                <div class="panel-body benchmark-body">
+                    <div class="scene-card"><canvas id="webglCanvas" aria-label="Cena 3D WebGL de teste"></canvas><div class="scene-overlay"><span class="live-badge"><i></i> RENDER AO VIVO</span><span class="scene-label">CENA WEBGL · CUBO DE REFERÊNCIA</span></div><div class="scene-fallback">WebGL não está disponível neste navegador.</div></div>
+                    <div class="bench-controls">
+                        <div class="fps-main"><div><span class="info-kicker">FPS OBSERVADO · ÚLTIMO SEGUNDO</span><strong>@FpsCurrent.ToString("F0")</strong><small>alvo visual: 60 FPS · sem garantia universal</small></div><div class="fps-gauge" style="--gauge:@Math.Clamp(FpsCurrent / 60d * 100d, 0d, 100d).ToString("F0")%"><span>@(FpsCurrent >= 55 ? "RÁPIDO" : FpsCurrent >= 28 ? "FLUIDO" : "CARREGADO")</span></div></div>
+                        <div class="metric-row"><div class="metric-tile"><small>Média da sessão</small><strong>@FpsAverage.ToString("F1") FPS</strong></div><div class="metric-tile"><small>Tempo médio por quadro</small><strong>@FrameMs.ToString("F1") ms</strong></div><div class="metric-tile"><small>Quadros medidos</small><strong>@FrameSamples</strong></div></div>
+                        <div class="load-control"><div class="field-heading"><label for="load-level">Carga do shader</label><span>@WorkloadLabel</span></div><input id="load-level" type="range" min="0" max="12" step="1" @bind="Workload" @bind:event="oninput" @onchange="ApplyWorkload"/><div class="range-labels"><span>Leve</span><span>Mais intenso</span></div></div>
+                        <div class="button-row"><button class="button button-primary" @onclick="StartScene" disabled="@SceneActive">Iniciar cena</button><button class="button button-quiet" @onclick="StopScene" disabled="@(!SceneActive)">Parar cena</button></div>
+                        <p class="privacy-note">O número vem de requestAnimationFrame no canvas e varia com GPU, tela, economia de energia, temperatura e outras abas. Carga alta pode aquecer e consumir bateria.</p>
+                        <p class="result-line"><span class="status-dot @(SceneActive ? "online" : "muted")"></span>@SceneStatus</p>
+                    </div>
+                </div>
+            }
+            else if (SelectedTest == "indexeddb")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Banco local IndexedDB</h3><p>Grave e leia uma amostra simples no banco local desta origem.</p><div class="button-row"><button class="button button-primary" @onclick="SaveIndexedDb">Gravar amostra</button><button class="button button-quiet" @onclick="ReadIndexedDb">Ler amostra</button><button class="button button-quiet" @onclick="ClearIndexedDb">Apagar amostra</button></div><p class="result-line">@IndexedDbStatus</p><div class="result-box"><small>Registro de demonstração</small><strong>@IndexedDbValue</strong></div></div><div class="info-card"><span class="info-kicker">BANCO DO NAVEGADOR</span><h3>Armazenamento estruturado</h3><p>IndexedDB funciona sem um servidor de dados. A amostra é escrita somente após você tocar em “Gravar amostra”.</p><p class="muted-copy">O espaço e a persistência podem variar por navegador e pelas configurações do usuário.</p></div></div>
+            }
+            else if (SelectedTest == "offline")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Conectividade e PWA</h3><p class="result-line"><span class="status-dot @(IsOnline ? "online" : "offline")"></span>@NetworkStatus</p><div class="metric-row"><div class="metric-tile"><small>Online agora</small><strong>@(IsOnline ? "Sim" : "Não")</strong></div><div class="metric-tile"><small>Tipo efetivo</small><strong>@(ConnectionType ?? "Não informado")</strong></div><div class="metric-tile"><small>Service worker</small><strong>@ServiceWorkerStatus</strong></div></div><button class="button button-secondary" @onclick="RefreshPwaStatus">Atualizar status PWA</button></div><div class="info-card"><span class="info-kicker">CACHE OFFLINE</span><h3>Reabra depois do primeiro carregamento</h3><p>O template Blazor PWA mantém os arquivos publicados no cache do service worker. A primeira carga precisa de rede.</p><p class="muted-copy">Durante <code>dotnet run</code> o service worker de desenvolvimento não ativa o cache offline. Faça o teste com o pacote publicado conforme o README.</p><div class="push-state"><span class="status-dot @(IsInstalled ? "online" : "muted")"></span><span><b>@(IsInstalled ? "Modo instalado" : "Modo navegador")</b><small>Instalação depende do navegador e do sistema.</small></span></div></div></div>
+            }
+            else if (SelectedTest == "microphone")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Nível de áudio ambiente</h3><p>Ative o microfone para ler o nível do sinal enquanto esta tela fica aberta. O áudio não é gravado.</p><div class="audio-meter" role="meter" aria-label="Nível de áudio" aria-valuenow="@MicLevel" aria-valuemin="0" aria-valuemax="100"><span style="width:@MicLevel%"></span></div><div class="field-heading"><span>@MicLevel% de nível</span><span>@MicStatus</span></div><div class="button-row"><button class="button button-primary" @onclick="StartMicrophone" disabled="@MicActive">Ativar microfone</button><button class="button button-quiet" @onclick="StopMicrophone" disabled="@(!MicActive)">Parar e liberar</button></div></div><div class="info-card"><span class="info-kicker">SEM GRAVAÇÃO</span><h3>Processamento transitório</h3><p>O código calcula apenas o volume aproximado no próprio navegador. Nenhum arquivo de áudio é criado ou transmitido.</p><p class="muted-copy">O pedido do sistema aparece somente quando você toca no botão. HTTPS e permissão concedida são necessários.</p></div></div>
+            }
+            else if (SelectedTest == "motion")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Orientação e movimento</h3><p>Mostre os valores que o dispositivo disponibilizar enquanto a sessão está ativa.</p><div class="metric-row"><div class="metric-tile"><small>Alpha / bússola</small><strong>@MotionAlpha</strong></div><div class="metric-tile"><small>Beta</small><strong>@MotionBeta</strong></div><div class="metric-tile"><small>Gamma</small><strong>@MotionGamma</strong></div></div><div class="metric-row"><div class="metric-tile"><small>Aceleração X</small><strong>@MotionX</strong></div><div class="metric-tile"><small>Aceleração Y</small><strong>@MotionY</strong></div><div class="metric-tile"><small>Aceleração Z</small><strong>@MotionZ</strong></div></div><div class="button-row"><button class="button button-primary" @onclick="StartMotion" disabled="@MotionActive">Ativar sensores</button><button class="button button-quiet" @onclick="StopMotion" disabled="@(!MotionActive)">Parar sensores</button></div><p class="result-line">@MotionStatus</p></div><div class="info-card"><span class="info-kicker">SENSORES DO SISTEMA</span><h3>Compatibilidade varia</h3><p>Alguns navegadores exigem HTTPS e uma confirmação extra. Valores ausentes podem significar que o sensor não existe, está bloqueado ou não é exposto.</p><p class="muted-copy">A leitura para quando você fecha este teste, muda de página ou usa “Parar testes”.</p></div></div>
+            }
+            else if (SelectedTest == "clipboard")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Área de transferência</h3><p>Copie um texto de teste ou leia o conteúdo atual. Ler pode mostrar dados pessoais que você copiou antes.</p><label class="field-label" for="clipboard-value">Texto para copiar</label><input id="clipboard-value" class="text-field" @bind="ClipboardValue" maxlength="240" autocomplete="off"/><div class="button-row"><button class="button button-primary" @onclick="CopyClipboard">Copiar texto</button><button class="button button-quiet" @onclick="ReadClipboard">Ler clipboard</button></div><p class="result-line">@ClipboardStatus</p>@if (!string.IsNullOrEmpty(ClipboardReadback)){<div class="result-box"><small>Conteúdo local lido</small><strong class="break-word">@ClipboardReadback</strong></div>}</div><div class="info-card"><span class="info-kicker">ACESSO SOB DEMANDA</span><h3>Nada acontece sozinho</h3><p>O navegador controla o acesso e pode exigir gesto, permissão ou HTTPS. O conteúdo não sai desta página.</p><p class="muted-copy">Para evitar expor algo acidentalmente, confira o botão antes de ler a área de transferência.</p></div></div>
+            }
+            else if (SelectedTest == "sharing")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Compartilhamento do sistema</h3><p>Abra a folha de compartilhamento nativa, quando disponível, com um texto neutro sobre o DeviceLab.</p><button class="button button-primary" @onclick="ShareDemo">Compartilhar DeviceLab</button><p class="result-line">@ShareStatus</p></div><div class="info-card"><span class="info-kicker">SEM DESTINATÁRIO PRÉ-SELECIONADO</span><h3>Você escolhe o destino</h3><p>O navegador mostra os destinos disponíveis. Nenhum arquivo ou dado privado é anexado pelo teste.</p></div></div>
+            }
+            else if (SelectedTest == "files")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Seleção de arquivo local</h3><p>Escolha um arquivo para ler apenas o nome, tipo e tamanho; o conteúdo não é enviado nem salvo.</p><label class="file-picker"><span class="file-picker-icon">＋</span><span><b>Escolher um arquivo</b><small>O seletor do aparelho abre após seu toque</small></span><InputFile OnChange="HandleFileChange" /></label>@if(FileInfo is not null){<div class="metric-row"><div class="metric-tile"><small>Nome</small><strong class="break-word">@FileInfo.Name</strong></div><div class="metric-tile"><small>Tamanho</small><strong>@FileInfo.SizeLabel</strong></div><div class="metric-tile"><small>Tipo</small><strong>@FileInfo.ContentType</strong></div></div>}</div><div class="info-card"><span class="info-kicker">ESCOPO LIMITADO</span><h3>Sem upload</h3><p>Este teste não lê bytes nem envia o arquivo. A seleção termina aqui e pode ser trocada quando você quiser.</p><p class="muted-copy">APIs avançadas de sistema de arquivos aparecem em poucos navegadores; não são necessárias para escolher um arquivo.</p></div></div>
+            }
+            else if (SelectedTest == "system")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Tela e atividade</h3><p>Teste tela cheia e mantenha a tela ativa temporariamente, se o navegador liberar.</p><div class="button-row"><button class="button button-primary" @onclick="ToggleFullscreen">@(FullscreenActive ? "Sair da tela cheia" : "Entrar em tela cheia")</button><button class="button button-quiet" @onclick="ToggleWakeLock">@(WakeLockActive ? "Liberar tela ativa" : "Manter tela ativa")</button></div><p class="result-line">@SystemStatus</p><p class="muted-copy">O bloqueio de suspensão é liberado ao ocultar a página ou sair do app.</p></div><div class="info-card"><span class="info-kicker">SOB CONTROLE DO NAVEGADOR</span><h3>Permissões temporárias</h3><p>Fullscreen e Wake Lock variam por navegador, dispositivo, orientação e estado da tela. A experiência pode pedir gesto e não permanece após sair da página.</p></div></div>
+            }
+            else if (SelectedTest == "haptics")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Vibração</h3><p>Envie um padrão curto ao aparelho, quando a API estiver disponível.</p><button class="button button-primary" @onclick="Vibrate">Vibrar por um instante</button><p class="result-line">@VibrationStatus</p></div><div class="info-card"><span class="info-kicker">RESPOSTA HÁPTICA</span><h3>Não disponível em todo lugar</h3><p>iOS/Safari e alguns navegadores não expõem a API. Um toque sem resposta pode significar suporte ausente, modo silencioso ou vibração desativada.</p></div></div>
+            }
+            else if (SelectedTest == "capabilities")
+            {
+                <div class="panel-body two-columns"><div class="control-card"><h3>Recursos detectados</h3><p>Disponibilidade observada nesta origem e nesta sessão. Detectar não abre dispositivos nem solicita acesso.</p><div class="capability-grid">@foreach(var cap in Capabilities){<div class="capability-row"><span class="status-dot @(cap.Value ? "online" : "muted")"></span><span>@cap.Label</span><strong>@(cap.Value ? "Disponível" : "Ausente")</strong></div>}</div><p class="muted-copy">WebUSB, WebSerial, Bluetooth e outros recursos avançados dependem do navegador e do hardware; nenhum pareamento é iniciado aqui.</p></div><div class="info-card"><span class="info-kicker">DETECÇÃO, SEM COLETA</span><h3>Uma fotografia do navegador</h3><p>O relatório mostra somente se determinadas interfaces existem. Ele não tenta identificar modelo, número de série ou dispositivos próximos.</p><button class="button button-secondary" @onclick="RefreshCapabilities">Atualizar recursos</button></div></div>
+            }
+        </section>
+    }
+
+    <footer class="footer">
+        <div class="footer-brand"><span class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></span><span>device<span class="brand-accent">lab</span></span></div>
+        <p>Um laboratório local para explorar o navegador, com curiosidade e consentimento.</p>
+        <a href="https://developer.mozilla.org/" target="_blank" rel="noreferrer">Documentação de Web APIs <span aria-hidden="true">↗</span></a>
+    </footer>
+</main>
+
+@code {
+    private readonly List<TestCard> Tests = new()
+    {
+        new("storage", "LocalStorage", "💾", "violet", "DADOS", "Grave e leia um valor local no navegador."),
+        new("gps", "Localização GPS", "⌖", "teal", "SENSOR", "Peça uma leitura única da posição."),
+        new("camera", "Câmera + QR", "▣", "blue", "CÂMERA", "Veja a câmera e tente ler um código QR."),
+        new("notifications", "Notificações", "♧", "orange", "LOCAL", "Exiba uma notificação do próprio app."),
+        new("webgl", "Cena 3D + FPS", "✳", "pink", "WEBGL", "Veja uma cena animada e quadros medidos."),
+        new("indexeddb", "IndexedDB", "▤", "green", "DADOS", "Grave e recupere uma amostra estruturada."),
+        new("offline", "Offline + rede", "⌁", "blue", "PWA", "Confira conexão e estado de instalação."),
+        new("microphone", "Microfone + áudio", "♫", "orange", "ÁUDIO", "Leia o nível de áudio sem gravar."),
+        new("motion", "Orientação + movimento", "⌖", "violet", "SENSOR", "Exiba sensores, se o device permitir."),
+        new("clipboard", "Clipboard", "▧", "green", "LOCAL", "Copie e leia um texto sob demanda."),
+        new("sharing", "Compartilhamento", "↗", "teal", "SISTEMA", "Abra o menu nativo de compartilhar."),
+        new("files", "Arquivos", "▱", "pink", "LOCAL", "Selecione um arquivo sem fazer upload."),
+        new("system", "Tela + Wake Lock", "⛶", "blue", "SISTEMA", "Teste tela cheia e tela ativa."),
+        new("haptics", "Vibração", "〰", "orange", "HÁPTICA", "Envie um padrão curto, se suportado."),
+        new("capabilities", "APIs avançadas", "⌘", "violet", "DETECÇÃO", "Veja as interfaces expostas pelo browser.")
+    };
+
+
+    private string? SelectedTest { get; set; }
+    private TestCard Selected => Tests.First(x => x.Id == SelectedTest);
+    private ElementReference _panelHeading;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Home>? _dotnetRef;
+    private bool _disposed;
+    private bool _focusPanelPending;
+    private bool IsOnline { get; set; } = true;
+    private bool IsInstalled { get; set; }
+    private string? ConnectionType { get; set; }
+    private string NetworkStatus { get; set; } = "Aguardando leitura do navegador…";
+    private string ServiceWorkerStatus { get; set; } = "Verificando";
+    private Dictionary<string, bool> _support = new();
+    private IEnumerable<(string Label, bool Value)> Capabilities => new (string Label, bool Value)[]
+    {
+        ("WebGL", Supports("webgl")), ("LocalStorage", Supports("localStorage")), ("IndexedDB", Supports("indexedDb")),
+        ("Câmera / microfone", Supports("mediaDevices")), ("Localização", Supports("geolocation")),
+        ("Notificação", Supports("notifications")), ("Leitor QR ZXing local", Supports("qrScanner")),
+        ("BarcodeDetector nativo", Supports("qrDetector")),
+        ("Sensor de movimento", Supports("motion")), ("Clipboard", Supports("clipboard")),
+        ("Web Share", Supports("share")), ("Vibração", Supports("vibration")),
+        ("WebGL2", Supports("webgl2")), ("Web Bluetooth", Supports("bluetooth")),
+        ("Web USB", Supports("usb")), ("Web Serial", Supports("serial")),
+        ("File System Access", Supports("filePicker")), ("Wake Lock", Supports("wakeLock")),
+        ("Fullscreen", Supports("fullscreen"))
+    };
+
+    private bool GpsBusy { get; set; }
+    private string GpsStatus { get; set; } = "Nenhuma leitura solicitada.";
+    private double? GpsLatitude { get; set; }
+    private double? GpsLongitude { get; set; }
+    private double? GpsAccuracy { get; set; }
+    private bool CameraActive { get; set; }
+    private string CameraStatus { get; set; } = "A câmera está parada.";
+    private string PhotoStatus { get; set; } = "A foto só é capturada depois de abrir a câmera.";
+    private string? CapturedPhotoDataUrl { get; set; }
+    private string? QrResult { get; set; }
+    private string NotificationStatus { get; set; } = "Nenhuma notificação solicitada.";
+    private string LocalValue { get; set; } = "Olá, DeviceLab!";
+    private string LocalReadback { get; set; } = "";
+    private string LocalStatus { get; set; } = "Ainda não houve gravação.";
+    private string IndexedDbStatus { get; set; } = "Ainda não houve gravação.";
+    private string IndexedDbValue { get; set; } = "Nenhuma amostra lida.";
+    private bool SceneActive { get; set; }
+    private string SceneStatus { get; set; } = "A cena só renderiza depois do clique em Iniciar cena.";
+    private double FpsCurrent { get; set; }
+    private double FpsAverage { get; set; }
+    private double FrameMs { get; set; }
+    private int FrameSamples { get; set; }
+    private int Workload { get; set; } = 2;
+    private string WorkloadLabel => Workload switch { <= 2 => "Leve", <= 6 => "Moderada", _ => "Alta" };
+    private bool MicActive { get; set; }
+    private int MicLevel { get; set; }
+    private string MicStatus { get; set; } = "Desligado";
+    private bool MotionActive { get; set; }
+    private string MotionAlpha { get; set; } = "—";
+    private string MotionBeta { get; set; } = "—";
+    private string MotionGamma { get; set; } = "—";
+    private string MotionX { get; set; } = "—";
+    private string MotionY { get; set; } = "—";
+    private string MotionZ { get; set; } = "—";
+    private string MotionStatus { get; set; } = "Sensores desligados.";
+    private string ClipboardValue { get; set; } = "DeviceLab: teste de clipboard";
+    private string ClipboardReadback { get; set; } = "";
+    private string ClipboardStatus { get; set; } = "Nenhuma ação solicitada.";
+    private string ShareStatus { get; set; } = "Nenhum compartilhamento solicitado.";
+    private IBrowserFile? _selectedFile;
+    private FileSummary? FileInfo => _selectedFile is null ? null : new FileSummary(_selectedFile.Name, FormatBytes(_selectedFile.Size), string.IsNullOrWhiteSpace(_selectedFile.ContentType) ? "Não informado" : _selectedFile.ContentType);
+    private bool FullscreenActive { get; set; }
+    private bool WakeLockActive { get; set; }
+    private string SystemStatus { get; set; } = "Nenhum recurso ativo.";
+    private string VibrationStatus { get; set; } = "Ainda não houve teste.";
+    private bool AnyResourceActive => CameraActive || SceneActive || MicActive || MotionActive || WakeLockActive;
+
+    protected override void OnInitialized()
+    {
+        IsOnline = OperatingSystem.IsBrowser();
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/deviceLab.js");
+                _dotnetRef = DotNetObjectReference.Create(this);
+                var result = await _module.InvokeAsync<JsonElement>("initialize", _dotnetRef);
+                if (result.TryGetProperty("capabilities", out var capabilities))
+                {
+                    _support = JsonSerializer.Deserialize<Dictionary<string, bool>>(capabilities.GetRawText()) ?? new();
+                }
+                IsOnline = result.TryGetProperty("online", out var online) && online.GetBoolean();
+                IsInstalled = result.TryGetProperty("installed", out var installed) && installed.GetBoolean();
+                ConnectionType = result.TryGetProperty("connectionType", out var type) ? type.GetString() : null;
+                ServiceWorkerStatus = result.TryGetProperty("serviceWorker", out var sw) ? sw.GetString() ?? "Indisponível" : "Indisponível";
+                NetworkStatus = IsOnline ? "Conectividade reportada pelo navegador: online." : "O navegador reporta que está offline.";
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                ServiceWorkerStatus = "Não detectado";
+                NetworkStatus = "O painel de recursos não pôde ser inicializado neste contexto.";
+                Console.Error.WriteLine($"DeviceLab browser APIs initialization: {ex.GetType().Name}");
+            }
+        }
+
+        if (_focusPanelPending && SelectedTest is not null)
+        {
+            _focusPanelPending = false;
+            try
+            {
+                if (_module is not null)
+                    await _module.InvokeVoidAsync("focusBenchHeading", _panelHeading);
+                else
+                    await _panelHeading.FocusAsync();
+            }
+            catch (JSException) { }
+        }
+    }
+
+    private bool Supports(string key) => _support.TryGetValue(key, out var value) && value;
+
+    private async Task OpenTest(string id)
+    {
+        if (SelectedTest != id)
+        {
+            await StopActiveResources();
+            if (SelectedTest == "camera") ClearCapturedPhoto();
+            SelectedTest = id;
+        }
+        _focusPanelPending = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+        if (id == "offline") await RefreshPwaStatus();
+        if (id == "capabilities") await RefreshCapabilities();
+    }
+
+    private async Task CloseTest()
+    {
+        await StopActiveResources();
+        if (SelectedTest == "camera") ClearCapturedPhoto();
+        _focusPanelPending = false;
+        SelectedTest = null;
+    }
+
+    private async Task SaveLocal()
+    {
+        if (_module is null) return;
+        try
+        {
+            LocalReadback = await _module.InvokeAsync<string>("localStorageWriteRead", "devicelab.demo", LocalValue);
+            LocalStatus = "OK · gravação e leitura confirmadas no navegador.";
+        }
+        catch (Exception ex) { LocalStatus = SafeMessage(ex); }
+    }
+
+    private async Task ClearLocal()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("localStorageRemove", "devicelab.demo"); LocalReadback = ""; LocalStatus = "Chave de demonstração removida."; }
+        catch (Exception ex) { LocalStatus = SafeMessage(ex); }
+    }
+
+    private async Task ReadLocation()
+    {
+        if (_module is null) return;
+        GpsBusy = true; GpsLatitude = null; GpsLongitude = null; GpsAccuracy = null; GpsStatus = "O navegador está consultando a posição…";
+        try { await _module.InvokeVoidAsync("readLocation", _dotnetRef); }
+        catch (Exception ex) { GpsBusy = false; GpsStatus = SafeMessage(ex); }
+    }
+
+    private async Task StartCamera()
+    {
+        if (_module is null) return;
+        ClearCapturedPhoto();
+        QrResult = null; CameraStatus = "Aguardando permissão da câmera…";
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("startCamera", "cameraView", _dotnetRef);
+            CameraActive = result.TryGetProperty("ok", out var ok) && ok.GetBoolean();
+            CameraStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Câmera indisponível." : "Câmera indisponível.";
+        }
+        catch (Exception ex) { CameraStatus = SafeMessage(ex); CameraActive = false; }
+    }
+
+    private async Task CapturePhoto()
+    {
+        if (_module is null || !CameraActive) return;
+        PhotoStatus = "Capturando quadro atual…";
+        try
+        {
+            CapturedPhotoDataUrl = await _module.InvokeAsync<string>("captureCameraPhoto");
+            PhotoStatus = "Foto capturada localmente. Baixe-a ou apague-a antes de sair.";
+        }
+        catch (Exception ex) { PhotoStatus = SafeMessage(ex); }
+    }
+
+    private void ClearCapturedPhoto()
+    {
+        CapturedPhotoDataUrl = null;
+        PhotoStatus = "Nenhuma foto guardada nesta sessão.";
+    }
+
+    private async Task StopCamera()
+    {
+        CameraActive = false;
+        if (_module is not null) await SafeInvoke("stopCamera");
+        CameraStatus = "Câmera parada e trilhas liberadas.";
+    }
+
+    private async Task ScanQrSample()
+    {
+        if (_module is null) return;
+        CameraStatus = "Decodificando o QR de demonstração local…";
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("decodeQrImage", "demoQrImage", _dotnetRef);
+            CameraStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Amostra QR indisponível." : "Amostra QR indisponível.";
+        }
+        catch (Exception ex) { CameraStatus = SafeMessage(ex); }
+    }
+
+    private async Task SendLocalNotification()
+    {
+        if (_module is null) return;
+        NotificationStatus = "Aguardando sua escolha no navegador…";
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("showLocalNotification", _dotnetRef);
+            NotificationStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Não foi possível exibir." : "Não foi possível exibir.";
+        }
+        catch (Exception ex) { NotificationStatus = SafeMessage(ex); }
+    }
+
+    private async Task StartScene()
+    {
+        if (_module is null) return;
+        FpsCurrent = 0; FpsAverage = 0; FrameMs = 0; FrameSamples = 0;
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("startScene", "webglCanvas", _dotnetRef, Workload);
+            SceneActive = result.TryGetProperty("ok", out var ok) && ok.GetBoolean();
+            SceneStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Cena pronta." : "Cena pronta.";
+        }
+        catch (Exception ex) { SceneStatus = SafeMessage(ex); SceneActive = false; }
+    }
+
+    private async Task StopScene()
+    {
+        SceneActive = false;
+        if (_module is not null) await SafeInvoke("stopScene");
+        SceneStatus = "Cena parada; loop de renderização encerrado.";
+    }
+
+    private async Task ApplyWorkload(ChangeEventArgs _)
+    {
+        if (_module is not null && SceneActive) await _module.InvokeVoidAsync("setSceneWorkload", Workload);
+    }
+
+    private async Task SaveIndexedDb()
+    {
+        if (_module is null) return;
+        try { IndexedDbValue = await _module.InvokeAsync<string>("indexedDbPutRead", "demo", "Amostra local do DeviceLab"); IndexedDbStatus = "OK · gravado e lido do IndexedDB."; }
+        catch (Exception ex) { IndexedDbStatus = SafeMessage(ex); }
+    }
+
+    private async Task ReadIndexedDb()
+    {
+        if (_module is null) return;
+        try { IndexedDbValue = await _module.InvokeAsync<string>("indexedDbRead", "demo") ?? "Nenhuma amostra encontrada."; IndexedDbStatus = "Leitura concluída nesta origem."; }
+        catch (Exception ex) { IndexedDbStatus = SafeMessage(ex); }
+    }
+
+    private async Task ClearIndexedDb()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("indexedDbDelete", "demo"); IndexedDbValue = "Amostra removida."; IndexedDbStatus = "Registro de demonstração apagado."; }
+        catch (Exception ex) { IndexedDbStatus = SafeMessage(ex); }
+    }
+
+    private async Task RefreshPwaStatus()
+    {
+        if (_module is null) return;
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("getPwaStatus");
+            ServiceWorkerStatus = result.TryGetProperty("serviceWorker", out var sw) ? sw.GetString() ?? "Indisponível" : "Indisponível";
+            IsInstalled = result.TryGetProperty("installed", out var installed) && installed.GetBoolean();
+            IsOnline = result.TryGetProperty("online", out var online) && online.GetBoolean();
+            NetworkStatus = IsOnline ? "O navegador reporta que está online." : "Offline · o service worker pode servir o app após o cache inicial.";
+        }
+        catch (Exception ex) { NetworkStatus = SafeMessage(ex); }
+    }
+
+    private async Task StartMicrophone()
+    {
+        if (_module is null) return;
+        MicStatus = "Aguardando permissão do microfone…";
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("startMicrophone", _dotnetRef);
+            MicActive = result.TryGetProperty("ok", out var ok) && ok.GetBoolean();
+            MicStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Microfone indisponível." : "Microfone indisponível.";
+        }
+        catch (Exception ex) { MicStatus = SafeMessage(ex); MicActive = false; }
+    }
+
+    private async Task StopMicrophone()
+    {
+        MicActive = false; MicLevel = 0;
+        if (_module is not null) await SafeInvoke("stopMicrophone");
+        MicStatus = "Desligado; trilhas de áudio liberadas.";
+    }
+
+    private async Task StartMotion()
+    {
+        if (_module is null) return;
+        MotionStatus = "Solicitando acesso aos sensores…";
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("startMotion", _dotnetRef);
+            MotionActive = result.TryGetProperty("ok", out var ok) && ok.GetBoolean();
+            MotionStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Sensores indisponíveis." : "Sensores indisponíveis.";
+        }
+        catch (Exception ex) { MotionStatus = SafeMessage(ex); MotionActive = false; }
+    }
+
+    private async Task StopMotion()
+    {
+        MotionActive = false;
+        if (_module is not null) await SafeInvoke("stopMotion");
+        MotionStatus = "Sensores parados.";
+    }
+
+    private async Task CopyClipboard()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("copyClipboard", ClipboardValue); ClipboardStatus = "Texto copiado para o clipboard."; }
+        catch (Exception ex) { ClipboardStatus = SafeMessage(ex); }
+    }
+
+    private async Task ReadClipboard()
+    {
+        if (_module is null) return;
+        try { ClipboardReadback = await _module.InvokeAsync<string>("readClipboard"); ClipboardStatus = "Leitura local concluída."; }
+        catch (Exception ex) { ClipboardStatus = SafeMessage(ex); }
+    }
+
+    private async Task ShareDemo()
+    {
+        if (_module is null) return;
+        try { ShareStatus = await _module.InvokeAsync<string>("shareDemo"); }
+        catch (Exception ex) { ShareStatus = SafeMessage(ex); }
+    }
+
+    private Task HandleFileChange(InputFileChangeEventArgs args)
+    {
+        _selectedFile = args.File;
+        return Task.CompletedTask;
+    }
+
+    private async Task ToggleFullscreen()
+    {
+        if (_module is null) return;
+        try { FullscreenActive = await _module.InvokeAsync<bool>("toggleFullscreen"); SystemStatus = FullscreenActive ? "Tela cheia ativada." : "Tela cheia encerrada."; }
+        catch (Exception ex) { SystemStatus = SafeMessage(ex); }
+    }
+
+    private async Task ToggleWakeLock()
+    {
+        if (_module is null) return;
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("toggleWakeLock");
+            WakeLockActive = result.TryGetProperty("ok", out var ok) && ok.GetBoolean();
+            SystemStatus = result.TryGetProperty("message", out var message) ? message.GetString() ?? "Wake Lock indisponível." : "Wake Lock indisponível.";
+        }
+        catch (Exception ex) { SystemStatus = SafeMessage(ex); WakeLockActive = false; }
+    }
+
+    private async Task Vibrate()
+    {
+        if (_module is null) return;
+        try { VibrationStatus = await _module.InvokeAsync<string>("vibrate"); }
+        catch (Exception ex) { VibrationStatus = SafeMessage(ex); }
+    }
+
+    private async Task RefreshCapabilities()
+    {
+        if (_module is null) return;
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("getCapabilities");
+            _support = JsonSerializer.Deserialize<Dictionary<string, bool>>(result.GetRawText()) ?? new();
+        }
+        catch { }
+    }
+
+    private async Task StopAll()
+    {
+        await StopActiveResources();
+        SystemStatus = "Todos os testes de sensores, mídia e renderização foram parados.";
+    }
+
+    private async Task StopActiveResources()
+    {
+        if (_module is null) return;
+        await SafeInvoke("stopLocation");
+        await SafeInvoke("stopCamera"); CameraActive = false;
+        await SafeInvoke("stopMicrophone"); MicActive = false; MicLevel = 0;
+        await SafeInvoke("stopMotion"); MotionActive = false;
+        await SafeInvoke("stopScene"); SceneActive = false;
+        await SafeInvoke("releaseWakeLock"); WakeLockActive = false;
+        GpsBusy = false;
+    }
+
+    private async Task SafeInvoke(string method)
+    {
+        try { if (_module is not null) await _module.InvokeVoidAsync(method); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    private static string SafeMessage(Exception ex) => ex is JSException js ? js.Message : ex.GetType().Name + " · verifique suporte e permissão do navegador.";
+    private static string FormatBytes(long bytes) => bytes switch { < 1024 => $"{bytes} B", < 1024 * 1024 => $"{bytes / 1024d:F1} KB", _ => $"{bytes / (1024d * 1024d):F1} MB" };
+
+    [JSInvokable]
+    public Task OnGpsResult(double latitude, double longitude, double accuracy)
+    {
+        GpsBusy = false; GpsLatitude = latitude; GpsLongitude = longitude; GpsAccuracy = accuracy; GpsStatus = "Localização recebida nesta sessão; nenhum registro foi salvo.";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnGpsError(string message)
+    {
+        GpsBusy = false; GpsStatus = message;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnCameraMessage(string message, string? result)
+    {
+        CameraStatus = message; if (!string.IsNullOrEmpty(result)) QrResult = result;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task<string?> DecodeQrFrame(byte[] rgba, int width, int height)
+    {
+        if (rgba is null || width < 1 || height < 1 || width > 480 || height > 480 || rgba.Length != width * height * 4)
+            return Task.FromResult<string?>(null);
+        try { return Task.FromResult(LocalQrDecoder.DecodeRgba(rgba, width, height)); }
+        catch { return Task.FromResult<string?>(null); }
+    }
+
+    [JSInvokable]
+    public Task OnSceneMetrics(double fps, double average, double frameMs, int samples)
+    {
+        FpsCurrent = fps; FpsAverage = average; FrameMs = frameMs; FrameSamples = samples;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnMicLevel(int level)
+    {
+        MicLevel = level; return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnMotion(double? alpha, double? beta, double? gamma, double? x, double? y, double? z)
+    {
+        MotionAlpha = FormatMetric(alpha, "°"); MotionBeta = FormatMetric(beta, "°"); MotionGamma = FormatMetric(gamma, "°");
+        MotionX = FormatMetric(x, ""); MotionY = FormatMetric(y, ""); MotionZ = FormatMetric(z, "");
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnNetworkChanged(bool online, string? connectionType)
+    {
+        IsOnline = online; ConnectionType = connectionType;
+        NetworkStatus = online ? "O navegador reporta que está online." : "Offline · verifique cache publicado do service worker.";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnSystemMessage(string message)
+    {
+        if (message.Contains("fullscreen", StringComparison.OrdinalIgnoreCase)) FullscreenActive = message.EndsWith("on", StringComparison.OrdinalIgnoreCase);
+        if (message.Contains("wake", StringComparison.OrdinalIgnoreCase)) WakeLockActive = message.EndsWith("on", StringComparison.OrdinalIgnoreCase);
+        if (message.Contains("liberados ao sair", StringComparison.OrdinalIgnoreCase))
+        {
+            CameraActive = false; MicActive = false; MotionActive = false; SceneActive = false; WakeLockActive = false; GpsBusy = false; MicLevel = 0;
+        }
+        SystemStatus = message;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatMetric(double? value, string suffix) => value is null ? "—" : $"{value.Value:F1}{suffix}";
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _ = StopActiveResources();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Navigation.LocationChanged -= HandleLocationChanged;
+        await StopActiveResources();
+        _dotnetRef?.Dispose();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private sealed record TestCard(string Id, string Title, string Icon, string Tone, string Tag, string Description);
+    private sealed record FileSummary(string Name, string SizeLabel, string ContentType);
+}

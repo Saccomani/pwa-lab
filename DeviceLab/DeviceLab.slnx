@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="DeviceLab.csproj" />
+  <Project Path="DeviceLab.Scanner/DeviceLab.Scanner.csproj" />
+  <Project Path="DeviceLab.Tests/DeviceLab.Tests.csproj" />
+</Solution>

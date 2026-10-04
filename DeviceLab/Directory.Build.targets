@@ -1,0 +1,12 @@
+<Project>
+  <!-- Keep the official .NET 10 WebAssembly tasks in the current MSBuild process.
+       The sandbox cannot connect to MSBuild's out-of-process NET/arm64 task host. -->
+  <UsingTask TaskName="Microsoft.NET.Sdk.WebAssembly.ComputeWasmBuildAssets" AssemblyFile="$(WebAssemblySdkDirectoryRoot)tools/net10.0/Microsoft.NET.Sdk.WebAssembly.Pack.Tasks.dll" Runtime="NET" Condition="'$(MSBuildProjectName)' == 'DeviceLab'" />
+  <UsingTask TaskName="Microsoft.NET.Sdk.WebAssembly.GenerateWasmBootJson" AssemblyFile="$(WebAssemblySdkDirectoryRoot)tools/net10.0/Microsoft.NET.Sdk.WebAssembly.Pack.Tasks.dll" Runtime="NET" Condition="'$(MSBuildProjectName)' == 'DeviceLab'" />
+  <UsingTask TaskName="Microsoft.NET.Sdk.WebAssembly.ComputeWasmPublishAssets" AssemblyFile="$(WebAssemblySdkDirectoryRoot)tools/net10.0/Microsoft.NET.Sdk.WebAssembly.Pack.Tasks.dll" Runtime="NET" Condition="'$(MSBuildProjectName)' == 'DeviceLab'" />
+  <UsingTask TaskName="Microsoft.NET.Sdk.WebAssembly.ConvertDllsToWebCil" AssemblyFile="$(WebAssemblySdkDirectoryRoot)tools/net10.0/Microsoft.NET.Sdk.WebAssembly.Pack.Tasks.dll" Runtime="NET" Condition="'$(MSBuildProjectName)' == 'DeviceLab'" />
+  <!-- Keep ILLink's task wrapper in this MSBuild process too; sandboxed macOS
+       cannot start the separate ARM64 task host used by TaskHostFactory. Trimming stays enabled. -->
+  <UsingTask TaskName="ComputeManagedAssemblies" AssemblyFile="$(ILLinkTasksAssembly)" Runtime="NET" Override="true" Condition="'$(MSBuildProjectName)' == 'DeviceLab' and '$(ILLinkTasksAssembly)' != ''" />
+  <UsingTask TaskName="ILLink" AssemblyFile="$(ILLinkTasksAssembly)" Runtime="NET" Override="true" Condition="'$(MSBuildProjectName)' == 'DeviceLab' and '$(ILLinkTasksAssembly)' != ''" />
+</Project>

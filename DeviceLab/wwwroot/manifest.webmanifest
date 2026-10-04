@@ -1,0 +1,24 @@
+{
+  "name": "DeviceLab · bancada do navegador",
+  "short_name": "DeviceLab",
+  "description": "Laboratório local para testar recursos do navegador, sensores e performance.",
+  "id": "./",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#090e1c",
+  "theme_color": "#090e1c",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ]
+}
